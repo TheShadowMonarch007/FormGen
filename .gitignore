@@ -1,0 +1,14 @@
+.env
+__pycache__/
+flask_sessions/
+*.pyc
+venv/
+.venv/
+.vscode/
+credentials.json
+Forms.json
+forms.json
+settings.json
+client_secret*.json
+*.exe
+ngrok.exe

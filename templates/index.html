@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FormGen</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="container">
+
+        <div class="header">
+            <div>
+                <h1>FormGen</h1>
+                <p class="subtitle">AI-powered Google Form generator</p>
+            </div>
+            <div class="header-right">
+                <button class="dark-toggle" onclick="toggleDark()">🌙 Dark</button>
+                {% if user.picture %}
+                <img src="{{ user.picture }}" class="user-avatar" alt="{{ user.name }}">
+                {% endif %}
+                <span class="user-info">{{ user.name }}</span>
+                <a href="/workspaces" class="settings-link">Workspaces ›</a>
+                <a href="/settings" class="settings-link">Settings ›</a>
+                <a href="/logout" class="signout-btn">Sign out</a>
+            </div>
+        </div>
+
+        <!-- Collapsed create button -->
+        <div class="create-collapsed" id="create-collapsed" onclick="expandCreate()">
+            <span class="create-collapsed-icon">+</span>
+            <span class="create-collapsed-text">Create a new form</span>
+        </div>
+
+        <!-- Expanded create section -->
+        <div class="card hidden" id="create-section">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+                <h2 style="margin-bottom: 0;">Create a new form</h2>
+                <button class="collapse-btn" onclick="collapseCreate()">✕</button>
+            </div>
+
+            <div class="form-group">
+                <label>Form title</label>
+                <input type="text" id="form-title" placeholder="e.g. Science Quiz, Teacher Feedback..." />
+            </div>
+
+            <div class="form-group">
+                <label>Questions / instructions for AI</label>
+                <textarea id="form-questions" placeholder="Paste your questions here, or describe what you want...
+
+Example: Create a 5 question quiz on Indian history with MCQ type questions"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Mandatory questions</label>
+                    <select id="form-mandatory">
+                        <option value="1">All mandatory</option>
+                        <option value="2">None mandatory</option>
+                        <option value="3">Specified in input</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Set expiry (optional)</label>
+                    <input type="datetime-local" id="form-expiry" />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Notify me when responses reach (optional)</label>
+                    <input type="number" id="form-threshold" min="1" placeholder="e.g. 50" />
+                </div>
+                <div class="form-group">
+                    <label>Allow multiple responses?</label>
+                    <select id="form-allow-multiple">
+                        <option value="no">No — one response per person</option>
+                        <option value="yes">Yes — allow multiple</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Workspace selector -->
+            <div class="form-group">
+                <label>Add to workspace (optional)</label>
+                <select id="form-workspace">
+                    <option value="">Personal — only visible to me</option>
+                    {% for ws in user_workspaces %}
+                    <option value="{{ ws.workspace_id }}">{{ ws.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button id="generate-btn" onclick="generateForm()">Generate form with AI</button>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>AI is generating your form...</p>
+            </div>
+
+            <div id="result-box" class="result-box hidden">
+                <p class="result-title">Your form is ready!</p>
+                <p id="result-form-title" class="result-form-title"></p>
+                <a id="result-link" href="#" target="_blank">Open form ›</a>
+            </div>
+        </div>
+
+        <!-- Forms section -->
+        <div class="forms-section">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                <h2 style="margin-bottom: 0;">Your forms</h2>
+                {% if last_synced %}
+                <p class="sync-label">Last synced: {{ last_synced }}</p>
+                {% endif %}
+            </div>
+
+            {% if forms %}
+                <div class="forms-list">
+                    {% for form in forms %}
+                    <div class="form-item" onclick="window.location.href='/form/{{ form.form_id }}'">
+                        <div class="form-item-info">
+                            <p class="form-item-title">{{ form.form_title }}</p>
+                            <p class="form-item-meta">
+                                {% if form.expires_at %}
+                                Expires {{ form.expires_at }}
+                                {% else %}
+                                No expiry
+                                {% endif %}
+                                · {{ form.response_count if form.response_count is defined and form.response_count != None else 0 }} responses
+                                {% if form.workspace_id %}
+                                · <span style="color: #3b5bdb;">Workspace</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="form-item-right">
+                            {% if form.status == 'active' %}
+                                <span class="badge badge-active">Active</span>
+                            {% else %}
+                                <span class="badge badge-closed">Closed</span>
+                            {% endif %}
+                            <span class="arrow">›</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <p>No forms yet. Create your first form above!</p>
+                </div>
+            {% endif %}
+        </div>
+
+    </div>
+
+    <script>
+        function expandCreate() {
+            document.getElementById('create-collapsed').classList.add('hidden');
+            document.getElementById('create-section').classList.remove('hidden');
+        }
+
+        function collapseCreate() {
+            document.getElementById('create-section').classList.add('hidden');
+            document.getElementById('create-collapsed').classList.remove('hidden');
+        }
+
+        async function generateForm() {
+            const title = document.getElementById('form-title').value.trim();
+            const questions = document.getElementById('form-questions').value.trim();
+            const mandatory = document.getElementById('form-mandatory').value;
+            let expiry = '';
+            const expiryRaw = document.getElementById('form-expiry').value;
+            if (expiryRaw) {
+                const dt = new Date(expiryRaw);
+                const day = String(dt.getDate()).padStart(2, '0');
+                const month = String(dt.getMonth() + 1).padStart(2, '0');
+                const year = dt.getFullYear();
+                let hours = dt.getHours();
+                const minutes = String(dt.getMinutes()).padStart(2, '0');
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12 || 12;
+                hours = String(hours).padStart(2, '0');
+                expiry = `${day}-${month}-${year} ${hours}:${minutes} ${ampm}`;
+            }
+
+            if (!title || !questions) {
+                alert('Please enter a form title and questions.');
+                return;
+            }
+
+            document.getElementById('generate-btn').disabled = true;
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('result-box').classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('questions', questions);
+            formData.append('mandatory', mandatory);
+            formData.append('expiry', expiry);
+            formData.append('threshold', document.getElementById('form-threshold').value.trim());
+            formData.append('allow_multiple', document.getElementById('form-allow-multiple').value);
+            formData.append('workspace_id', document.getElementById('form-workspace').value);
+
+            try {
+                const response = await fetch('/create', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('loading').classList.add('hidden');
+                    document.getElementById('result-box').classList.remove('hidden');
+                    document.getElementById('result-form-title').textContent = data.title;
+                    document.getElementById('result-link').href = data.link;
+                    location.reload();
+                } else {
+                    alert('Error creating form. Please try again.');
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                document.getElementById('generate-btn').disabled = false;
+                document.getElementById('loading').classList.add('hidden');
+            }
+        }
+
+        function toggleDark() {
+            document.body.classList.toggle('dark');
+            const btn = document.querySelector('.dark-toggle');
+            if (document.body.classList.contains('dark')) {
+                btn.textContent = '☀️ Light';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                btn.textContent = '🌙 Dark';
+                localStorage.setItem('theme', 'light');
+            }
+        }
+
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') {
+            document.body.classList.add('dark');
+            document.addEventListener('DOMContentLoaded', () => {
+                const btn = document.querySelector('.dark-toggle');
+                if (btn) btn.textContent = '☀️ Light';
+            });
+        }
+    </script>
+
+</body>
+</html>

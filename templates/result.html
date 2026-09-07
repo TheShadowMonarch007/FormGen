@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ form.form_title }} - FormGen</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+
+    <div class="container">
+
+        <div class="header">
+            <div>
+                <a href="/" class="back-link">← Back to home</a>
+                <h1>{{ form.form_title }}</h1>
+                <p class="subtitle">Form details and analytics</p>
+            </div>
+            <div class="header-right">
+                <button class="dark-toggle" onclick="toggleDark()">🌙 Dark</button>
+                {% if form.status == 'active' %}
+                    <span class="badge badge-active">Active</span>
+                {% else %}
+                    <span class="badge badge-closed">Closed</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Form info</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <p class="info-label">Form ID</p>
+                    <p class="info-value">{{ form.form_id }}</p>
+                </div>
+                <div class="info-item">
+                    <p class="info-label">Status</p>
+                    <p class="info-value">{{ form.status | capitalize }}</p>
+                </div>
+                <div class="info-item">
+                    <p class="info-label">Expiry</p>
+                    <p class="info-value">
+                        {% if form.expires_at %}
+                            {{ form.expires_at }}
+                        {% else %}
+                            No expiry set
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="info-item">
+                    <p class="info-label">Form link</p>
+                    <a href="{{ form.form_link }}" target="_blank" class="info-link">Open form ›</a>
+                </div>
+                <div class="info-item">
+                    <p class="info-label">Total responses</p>
+                    <p class="info-value">{{ response_count }}</p>
+                </div>
+                <div class="info-item">
+                    <p class="info-label">Notification threshold</p>
+                    <p class="info-value">
+                        {% if form.response_threshold %}
+                            {{ form.response_threshold }} responses
+                        {% else %}
+                            Not set
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Form actions -->
+            <div style="display: flex; gap: 8px; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border); flex-wrap: wrap;">
+                {% if form.status == 'active' %}
+                    <button class="action-btn action-btn-close" onclick="closeForm()">Close form</button>
+                {% else %}
+                    <button class="action-btn action-btn-reopen" onclick="reopenForm()">Reopen form</button>
+                {% endif %}
+                <button class="action-btn action-btn-delete" onclick="showDeleteModal()">Delete form</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+                <h2 style="margin-bottom: 0;">Responses & Analytics</h2>
+                {% if response_count > 0 %}
+                <div style="display: flex; gap: 8px;">
+                    <a href="/form/{{ form.form_id }}/export/csv" class="export-btn">⬇ CSV</a>
+                    <a href="/form/{{ form.form_id }}/export/excel" class="export-btn">⬇ Excel</a>
+                    <a href="https://docs.google.com/forms/d/{{ form.form_id }}/viewanalytics" target="_blank" class="export-btn export-btn-google">📊 Google Analytics</a>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if response_count == 0 %}
+                <div class="empty-state">
+                    <p>No responses yet. Share your form to start collecting responses.</p>
+                </div>
+            {% else %}
+                {% for item in analytics %}
+                <div class="analytics-question">
+                    <p class="analytics-q-title">{{ loop.index }}. {{ item.title }}</p>
+                    <p class="analytics-q-meta">{{ item.type.replace('_', ' ').title() }} · {{ item.answer_count }} response{% if item.answer_count != 1 %}s{% endif %}</p>
+
+                    {% if item.type in ['MULTIPLE_CHOICE', 'CHECKBOX', 'DROPDOWN'] and item.chart_data %}
+                        <canvas id="chart_{{ item.question_id }}" class="analytics-chart"></canvas>
+
+                    {% elif item.type in ['LINEAR_SCALE', 'RATING'] and item.chart_data %}
+                        <p class="analytics-avg">Average: <strong>{{ item.chart_data.average }}</strong></p>
+                        <canvas id="chart_{{ item.question_id }}" class="analytics-chart"></canvas>
+
+                    {% elif item.type in ['SHORT_ANSWER', 'PARAGRAPH'] %}
+                        <div class="text-answers">
+                            {% for answer in item.answers %}
+                                <div class="text-answer-item">{{ answer }}</div>
+                            {% else %}
+                                <p class="no-answers">No answers yet.</p>
+                            {% endfor %}
+                        </div>
+
+                    {% elif item.type in ['DATE', 'TIME'] %}
+                        <div class="text-answers">
+                            {% for answer in item.answers %}
+                                <div class="text-answer-item">{{ answer }}</div>
+                            {% else %}
+                                <p class="no-answers">No answers yet.</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+    </div>
+
+    <!-- Reopen modal -->
+    <div id="reopen-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h3>Reopen form</h3>
+            <p style="margin: 0.75rem 0; color: var(--text-secondary); font-size: 14px;">
+                This form was set to expire on <strong>{{ form.expires_at }}</strong>. What would you like to do?
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 1rem;">
+                <button class="action-btn action-btn-reopen" onclick="confirmReopen(false)">Keep original expiry</button>
+                <button class="action-btn action-btn-close" onclick="confirmReopen(true)">Remove expiry, close manually</button>
+                <button class="action-btn" onclick="closeModal('reopen-modal')" style="margin-top: 4px;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete modal -->
+    <div id="delete-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h3>Delete form</h3>
+            <p style="margin: 0.75rem 0; color: var(--text-secondary); font-size: 14px;">
+                Are you sure you want to delete <strong>{{ form.title }}</strong>?
+            </p>
+            <p style="color: #dc2626; font-weight: 700; font-size: 14px; margin-bottom: 1rem;">
+                ⚠ This form will be permanently deleted from FormGen AND from Google Forms. This cannot be undone.
+            </p>
+            <div style="display: flex; gap: 8px;">
+                <button class="action-btn action-btn-delete" onclick="confirmDelete()">Yes, delete permanently</button>
+                <button class="action-btn" onclick="closeModal('delete-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script id="analytics-data" type="application/json">{{ analytics | tojson }}</script>
+    <script id="form-data" type="application/json">{{ form | tojson }}</script>
+
+    <script>
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') {
+            document.body.classList.add('dark');
+            const btn = document.querySelector('.dark-toggle');
+            if (btn) btn.textContent = '☀️ Light';
+        }
+
+        const analyticsData = JSON.parse(document.getElementById('analytics-data').textContent);
+        const formData = JSON.parse(document.getElementById('form-data').textContent);
+        const formId = formData.form_id;
+
+        function renderCharts() {
+            const isDark = document.body.classList.contains('dark');
+            const textColor = isDark ? '#ccc' : '#666';
+            const gridColor = isDark ? '#2e2e2e' : '#e0e0e0';
+            const barColor = isDark ? '#6ee7b7' : '#1a1a1a';
+
+            analyticsData.forEach(item => {
+                if (!item.chart_data) return;
+                const canvas = document.getElementById('chart_' + item.question_id);
+                if (!canvas) return;
+
+                new Chart(canvas, {
+                    type: 'bar',
+                    data: {
+                        labels: item.chart_data.labels,
+                        datasets: [{
+                            label: 'Responses',
+                            data: item.chart_data.counts,
+                            backgroundColor: barColor,
+                            borderRadius: 6,
+                            borderSkipped: false,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: { stepSize: 1, color: textColor },
+                                grid: { color: gridColor }
+                            },
+                            x: {
+                                ticks: { color: textColor },
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        renderCharts();
+
+        function toggleDark() {
+            document.body.classList.toggle('dark');
+            const btn = document.querySelector('.dark-toggle');
+            if (document.body.classList.contains('dark')) {
+                btn.textContent = '☀️ Light';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                btn.textContent = '🌙 Dark';
+                localStorage.setItem('theme', 'light');
+            }
+            Chart.helpers.each(Chart.instances, chart => chart.destroy());
+            renderCharts();
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        async function closeForm() {
+            const res = await fetch(`/form/${formId}/close`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) location.reload();
+            else alert('Error closing form: ' + data.error);
+        }
+
+        function reopenForm() {
+            if (formData.expires_at) {
+                document.getElementById('reopen-modal').classList.remove('hidden');
+            } else {
+                confirmReopen(false);
+            }
+        }
+
+        async function confirmReopen(clearExpiry) {
+            closeModal('reopen-modal');
+            const res = await fetch(`/form/${formId}/reopen`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clear_expiry: clearExpiry })
+            });
+            const data = await res.json();
+            if (data.success) location.reload();
+            else alert('Error reopening form: ' + data.error);
+        }
+
+        function showDeleteModal() {
+            document.getElementById('delete-modal').classList.remove('hidden');
+        }
+
+        async function confirmDelete() {
+            const res = await fetch(`/form/${formId}/delete`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) window.location.href = '/';
+            else alert('Error deleting form: ' + data.error);
+        }
+    </script>
+
+</body>
+</html>

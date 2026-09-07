@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workspaces — FormGen</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <div>
+            <a href="/" class="back-link">← Back to forms</a>
+            <h1>Workspaces</h1>
+            <p class="subtitle">Collaborate on forms with your team</p>
+        </div>
+        <div class="header-right">
+            <button class="dark-toggle" onclick="toggleDark()">🌙 Dark</button>
+            {% if user.picture %}
+            <img src="{{ user.picture }}" class="user-avatar" alt="{{ user.name }}">
+            {% endif %}
+            <a href="/logout" class="signout-btn">Sign out</a>
+        </div>
+    </div>
+
+    <!-- Create workspace -->
+    <div class="card">
+        <h2>Create a workspace</h2>
+        <p class="card-desc">You'll become the admin and get an invite code to share with others.</p>
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="ws-name" placeholder="Workspace name (e.g. CS Department, Club Team...)"
+                style="flex:1; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
+                font-size: 14px; font-family: inherit; color: var(--text-primary); background: var(--input-bg); outline: none;" />
+            <button onclick="createWorkspace()"
+                style="padding: 9px 20px; background: var(--btn-bg); color: var(--surface); border: none;
+                border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;">
+                Create
+            </button>
+        </div>
+        <div id="create-result" class="hidden" style="margin-top: 1rem; padding: 1rem;
+            background: var(--info-bg); border: 1px solid var(--border); border-radius: 8px;">
+            <p style="font-size: 13px; color: #2d6a4f; font-weight: 500; margin-bottom: 6px;">Workspace created!</p>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Share this invite code with your team:</p>
+            <p id="invite-code-display" style="font-size: 22px; font-weight: 700; letter-spacing: 4px;
+                color: var(--text-primary); margin: 8px 0;"></p>
+            <button onclick="copyInviteCode()"
+                style="font-size: 12px; padding: 5px 14px; border: 1px solid #2d6a4f; border-radius: 6px;
+                background: transparent; color: #2d6a4f; cursor: pointer;">
+                Copy code
+            </button>
+        </div>
+    </div>
+
+    <!-- Join workspace -->
+    <div class="card">
+        <h2>Join a workspace</h2>
+        <p class="card-desc">Enter an invite code to request access. The admin will approve your request.</p>
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="invite-input" placeholder="Enter 8-character invite code"
+                maxlength="8"
+                style="flex:1; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
+                font-size: 14px; font-family: inherit; color: var(--text-primary); background: var(--input-bg);
+                outline: none; text-transform: uppercase; letter-spacing: 2px;" />
+            <button onclick="joinWorkspace()"
+                style="padding: 9px 20px; background: var(--btn-bg); color: var(--surface); border: none;
+                border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;">
+                Request to join
+            </button>
+        </div>
+        <p id="join-msg" class="hidden" style="margin-top: 0.75rem; font-size: 13px;"></p>
+    </div>
+
+    <!-- Workspaces I own -->
+    <div class="forms-section" style="margin-bottom: 2rem;">
+        <h2 style="margin-bottom: 1rem;">Workspaces you manage</h2>
+        {% if owned %}
+            <div class="forms-list">
+                {% for ws in owned %}
+                <div class="form-item" onclick="window.location.href='/workspaces/{{ ws.workspace_id }}'">
+                    <div class="form-item-info">
+                        <p class="form-item-title">{{ ws.name }}</p>
+                        <p class="form-item-meta">Invite code: <span style="font-weight: 600; letter-spacing: 2px;">{{ ws.invite_code }}</span></p>
+                    </div>
+                    <div class="form-item-right">
+                        <span class="badge badge-active">Admin</span>
+                        <span class="arrow">›</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>You haven't created any workspaces yet.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Workspaces I joined -->
+    <div class="forms-section">
+        <h2 style="margin-bottom: 1rem;">Workspaces you've joined</h2>
+        {% if joined %}
+            <div class="forms-list">
+                {% for ws in joined %}
+                <div class="form-item" onclick="window.location.href='/workspaces/{{ ws.workspace_id }}'">
+                    <div class="form-item-info">
+                        <p class="form-item-title">{{ ws.name }}</p>
+                        <p class="form-item-meta">Member</p>
+                    </div>
+                    <div class="form-item-right">
+                        <span class="badge" style="background:#f0f4ff; color:#3b5bdb;">Member</span>
+                        <span class="arrow">›</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>You haven't joined any workspaces yet.</p>
+            </div>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+    let createdInviteCode = '';
+
+    async function createWorkspace() {
+        const name = document.getElementById('ws-name').value.trim();
+        if (!name) { alert('Please enter a workspace name.'); return; }
+
+        const formData = new FormData();
+        formData.append('name', name);
+
+        const res = await fetch('/workspaces/create', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.success) {
+            createdInviteCode = data.invite_code;
+            document.getElementById('invite-code-display').textContent = data.invite_code;
+            document.getElementById('create-result').classList.remove('hidden');
+            document.getElementById('ws-name').value = '';
+            setTimeout(() => location.reload(), 4000);
+        } else {
+            alert(data.error || 'Failed to create workspace.');
+        }
+    }
+
+    function copyInviteCode() {
+        navigator.clipboard.writeText(createdInviteCode);
+        const btn = event.target;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy code', 2000);
+    }
+
+    async function joinWorkspace() {
+        const code = document.getElementById('invite-input').value.trim().toUpperCase();
+        if (code.length !== 8) { alert('Invite code must be 8 characters.'); return; }
+
+        const formData = new FormData();
+        formData.append('invite_code', code);
+
+        const res = await fetch('/workspaces/join', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        const msg = document.getElementById('join-msg');
+        msg.classList.remove('hidden');
+        if (data.success) {
+            msg.style.color = '#2d6a4f';
+            msg.textContent = `Request sent to join "${data.workspace_name}". Waiting for admin approval.`;
+            document.getElementById('invite-input').value = '';
+        } else {
+            msg.style.color = '#dc2626';
+            msg.textContent = data.error || 'Something went wrong.';
+        }
+    }
+
+    function toggleDark() {
+        document.body.classList.toggle('dark');
+        const btn = document.querySelector('.dark-toggle');
+        if (document.body.classList.contains('dark')) {
+            btn.textContent = '☀️ Light';
+            localStorage.setItem('theme', 'dark');
+        } else {
+            btn.textContent = '🌙 Dark';
+            localStorage.setItem('theme', 'light');
+        }
+    }
+    if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark');
+        document.addEventListener('DOMContentLoaded', () => {
+            const btn = document.querySelector('.dark-toggle');
+            if (btn) btn.textContent = '☀️ Light';
+        });
+    }
+</script>
+
+</body>
+</html>

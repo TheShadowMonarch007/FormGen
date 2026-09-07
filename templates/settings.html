@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - FormGen</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="container">
+
+        <div class="header">
+            <div>
+                <a href="/" class="back-link">← Back to home</a>
+                <h1>Settings</h1>
+                <p class="subtitle">Configure your default preferences</p>
+            </div>
+            <button class="dark-toggle" onclick="toggleDark()">🌙 Dark</button>
+        </div>
+
+        <div class="card">
+            <h2>Owner notifications</h2>
+            <p class="card-desc">Get notified when your forms receive responses.</p>
+
+            <div class="form-group" style="margin-top: 1rem;">
+                <label>Notification email (leave empty to use your Google account email)</label>
+                <input type="email" id="notification_email" placeholder="e.g. org@example.com" value="{{ settings.notification_email }}" />
+            </div>
+
+            <div class="form-group">
+                <label>Default response threshold (used when no per-form threshold is set)</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="number" id="response_threshold" value="{{ settings.response_threshold }}" min="1" style="width: 100px;" />
+                    <span style="font-size: 14px; color: var(--text-muted);">responses</span>
+                </div>
+            </div>
+        </div>
+
+        <button id="save-btn" onclick="saveSettings()">Save settings</button>
+
+        <div id="save-success" class="hidden" style="margin-top: 1rem; padding: 1rem; background: #f0faf4; border: 1px solid #b7e4c7; border-radius: 8px; text-align: center;">
+            <p style="color: #2d6a4f; font-weight: 500; font-size: 14px;">✓ Settings saved successfully!</p>
+        </div>
+
+    </div>
+
+    <script>
+        async function saveSettings() {
+            const notification_email = document.getElementById('notification_email').value.trim();
+            const response_threshold = document.getElementById('response_threshold').value;
+
+            const formData = new FormData();
+            formData.append('notification_email', notification_email);
+            formData.append('response_threshold', response_threshold);
+
+            try {
+                const response = await fetch('/settings/save', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.success) {
+                    const btn = document.getElementById('save-btn');
+                    btn.textContent = 'Saved!';
+                    btn.style.background = '#2d6a4f';
+                    document.getElementById('save-success').classList.remove('hidden');
+                    setTimeout(() => {
+                        document.getElementById('save-success').classList.add('hidden');
+                        btn.textContent = 'Save settings';
+                        btn.style.background = '';
+                    }, 3000);
+                }
+            } catch (error) {
+                alert('Error saving settings: ' + error.message);
+            }
+        }
+
+        function toggleDark() {
+            document.body.classList.toggle('dark');
+            const btn = document.querySelector('.dark-toggle');
+            if (document.body.classList.contains('dark')) {
+                btn.textContent = '☀️ Light';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                btn.textContent = '🌙 Dark';
+                localStorage.setItem('theme', 'light');
+            }
+        }
+
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') {
+            document.body.classList.add('dark');
+            document.addEventListener('DOMContentLoaded', () => {
+                const btn = document.querySelector('.dark-toggle');
+                if (btn) btn.textContent = '☀️ Light';
+            });
+        }
+    </script>
+
+</body>
+</html>
